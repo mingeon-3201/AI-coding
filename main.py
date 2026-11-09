@@ -1,157 +1,197 @@
 
 import streamlit as st
 import os
+from PIL import Image
+from transformers import pipeline
 
-# 페이지 설정
 st.set_page_config(
     page_title="AI 분리수거 도우미",
     page_icon="♻️",
     layout="wide"
 )
 
-# 쓰레기 데이터
-items = {
-    "plastic": {
-        "name": "플라스틱 물병",
-        "image": "images/plastic_bottle.jpg",
-        "correct": "플라스틱",
-        "prediction": "플라스틱",
-        "emoji": "🧴"
-    },
-    "can": {
-        "name": "알루미늄 캔",
-        "image": "images/can.jpg",
-        "correct": "캔류",
-        "prediction": "캔류",
-        "emoji": "🥫"
-    },
-    "paper": {
-        "name": "종이컵",
-        "image": "images/paper_cup.jpg",
-        "correct": "종이컵류",
-        "prediction": "일반 종이",
-        "emoji": "🥤"
-    },
-    "glass": {
-        "name": "유리병",
-        "image": "images/glass_bottle.jpg",
-        "correct": "유리류",
-        "prediction": "플라스틱",
-        "emoji": "🍾"
-    },
-    "bag": {
-        "name": "비닐봉지",
-        "image": "images/plastic_bag.jpg",
-        "correct": "비닐류",
-        "prediction": "플라스틱",
-        "emoji": "🛍️"
-    },
-    "cardboard": {
-        "name": "종이 상자",
-        "image": "images/cardboard.jpg",
-        "correct": "종이류",
-        "prediction": "종이류",
-        "emoji": "📦"
-    }
+st.title("♻️ AI 분리수거 도우미")
+st.write("쓰레기 이미지를 선택하거나 직접 업로드하여 분리배출 방법을 확인하세요.")
+
+# 분류할 이미지 후보
+labels = {
+    "a plastic water bottle": "플라스틱",
+    "an aluminum drink can": "캔류",
+    "a paper cup": "종이컵류",
+    "a glass bottle": "유리류",
+    "a plastic shopping bag": "비닐류",
+    "a cardboard box": "종이류",
+    "food scraps": "음식물류"
 }
 
-categories = [
-    "플라스틱", "캔류", "일반 종이",
-    "종이컵류", "유리류", "비닐류", "종이류"
-]
+categories = list(set(labels.values()))
 
 guides = {
-    "플라스틱": "내용물을 비우고 깨끗하게 헹군 후 배출합니다.",
-    "캔류": "내용물을 비우고 가능한 한 압착하여 배출합니다.",
-    "일반 종이": "물기와 이물질을 제거하고 종이류로 배출합니다.",
-    "종이컵류": "내용물을 비우고 헹군 뒤 지역별 종이컵 배출 기준을 확인합니다.",
-    "유리류": "내용물을 비우고 깨끗하게 배출합니다. 깨진 유리는 별도 기준을 확인합니다.",
-    "비닐류": "이물질을 제거하고 깨끗한 비닐만 배출합니다.",
-    "종이류": "테이프와 이물질을 제거하고 종이류로 배출합니다."
+    "플라스틱": "내용물을 비우고 헹군 뒤 배출하세요.",
+    "캔류": "내용물을 비우고 가능한 한 압착하여 배출하세요.",
+    "종이컵류": "내용물을 비우고 헹군 뒤 지역별 배출 기준을 확인하세요.",
+    "유리류": "내용물을 비우고 깨끗하게 배출하세요.",
+    "비닐류": "이물질을 제거하고 깨끗한 비닐만 배출하세요.",
+    "종이류": "테이프와 이물질을 제거하고 배출하세요.",
+    "음식물류": "음식물 쓰레기 배출 기준에 따라 배출하세요."
 }
 
-# 세션 데이터 초기화
-if "selected" not in st.session_state:
-    st.session_state.selected = None
-
+# 오류 기록
 if "errors" not in st.session_state:
     st.session_state.errors = []
 
-# 제목
-st.title("♻️ AI 분리수거 도우미")
-st.write("쓰레기 이미지를 선택하면 AI가 분리배출 종류를 예측합니다.")
+# AI 모델 불러오기
+@st.cache_resource
+def load_model():
+    return pipeline(
+        "zero-shot-image-classification",
+        model="openai/clip-vit-base-patch32"
+    )
+
 st.divider()
 
-# 이미지 선택
-st.subheader("🔍 분리수거할 쓰레기를 선택하세요.")
+# 이미지 업로드 기능
+st.subheader("📷 직접 이미지 업로드")
+
+uploaded_file = st.file_uploader(
+    "컴퓨터에서 쓰레기 이미지를 선택하세요.",
+    type=["jpg", "jpeg", "png", "webp"]
+)
+
+if uploaded_file is not None:
+    image = Image.open(uploaded_file).convert("RGB")
+
+    st.image(image, caption="업로드한 이미지", width=300)
+
+    if st.button("AI 이미지 분석하기"):
+        try:
+            with st.spinner("AI가 이미지를 분석하고 있습니다..."):
+                model = load_model()
+                result = model(
+                    image,
+                    candidate_labels=list(labels.keys())
+                )
+
+                best = result[0]
+                predicted = labels[best["label"]]
+
+                st.session_state.upload_result = {
+                    "name": uploaded_file.name,
+                    "prediction": predicted,
+                    "score": best["score"]
+                }
+
+        except Exception as e:
+            st.error("이미지 분석에 실패했습니다.")
+            st.caption(str(e))
+
+    if (
+        "upload_result" in st.session_state
+        and st.session_state.upload_result["name"] == uploaded_file.name
+    ):
+        result = st.session_state.upload_result
+        st.divider()
+        st.subheader("🤖 AI 분석 결과")
+
+        st.success(f"예측 결과: {result['prediction']}")
+        st.write(
+            f"모델 유사도 점수: {result['score']:.2%}"
+        )
+        st.caption(
+            "유사도 점수는 실제 분류 정확도와 같지 않습니다."
+        )
+
+        if result["score"] < 0.20:
+            st.warning("분류 결과가 불확실할 수 있습니다. 직접 확인해 주세요.")
+
+        st.write("### 분리배출 방법")
+        st.write(guides[result["prediction"]])
+
+        st.write("### 정답 확인")
+        answer = st.selectbox(
+            "실제 쓰레기 종류를 선택하세요.",
+            categories,
+            key="upload_answer"
+        )
+
+        if st.button("정답 확인 및 오류 기록"):
+            wrong = result["prediction"] != answer
+
+            st.session_state.errors.append({
+                "이미지": result["name"],
+                "AI 예측": result["prediction"],
+                "실제 정답": answer,
+                "오류 여부": wrong
+            })
+
+            if wrong:
+                st.warning("AI의 오인식 사례가 기록되었습니다.")
+            else:
+                st.success("정확하게 분류했습니다!")
+
+st.divider()
+
+# 기본 제공 이미지 선택 기능
+st.subheader("🗂️ 준비된 이미지 선택")
+
+items = {
+    "플라스틱 물병": ("🧴", "플라스틱"),
+    "알루미늄 캔": ("🥫", "캔류"),
+    "종이컵": ("🥤", "종이컵류"),
+    "유리병": ("🍾", "유리류"),
+    "비닐봉지": ("🛍️", "비닐류"),
+    "종이 상자": ("📦", "종이류")
+}
 
 cols = st.columns(3)
 
-for i, (key, item) in enumerate(items.items()):
+for i, (name, data) in enumerate(items.items()):
+    emoji, category = data
+
     with cols[i % 3]:
-        if os.path.exists(item["image"]):
-            st.image(item["image"], use_container_width=True)
-        else:
-            st.markdown(
-                f"<div style='font-size:65px;text-align:center;"
-                f"padding:20px'>{item['emoji']}</div>",
-                unsafe_allow_html=True
-            )
+        st.markdown(f"## {emoji}")
+        st.write(name)
 
-        st.write(f"**{item['name']}**")
+        if st.button("선택하기", key=name):
+            st.session_state.selected = name
 
-        if st.button("이 이미지 선택", key=key, use_container_width=True):
-            st.session_state.selected = key
+if st.session_state.get("selected"):
+    name = st.session_state.selected
+    emoji, correct = items[name]
 
-# 분석 결과
-if st.session_state.selected:
-    key = st.session_state.selected
-    item = items[key]
+    # 기존 초기 버전의 테스트용 오인식
+    mistakes = {
+        "종이컵": "일반 종이",
+        "유리병": "플라스틱",
+        "비닐봉지": "플라스틱"
+    }
 
-    st.divider()
-    st.subheader("🤖 AI 분석 결과")
+    prediction = mistakes.get(name, correct)
 
-    st.write(f"선택한 물건: **{item['name']}**")
-    st.info(f"AI 예측 결과: {item['prediction']}")
+    st.subheader("기본 이미지 분석 결과")
+    st.write(f"선택한 물건: {name}")
+    st.info(f"예측 결과: {prediction}")
 
-    # 예측 결과와 정답 비교
-    if item["prediction"] != item["correct"]:
-        st.warning("⚠️ 인식 오류가 발생했습니다. 결과를 확인해 주세요.")
+    if prediction != correct:
+        st.warning("오인식이 발생했습니다.")
     else:
-        st.success("✅ 올바르게 분류했습니다.")
+        st.success("올바르게 분류했습니다.")
 
-    st.write("### 분리배출 방법")
-    st.write(guides[item["correct"]])
+    st.write(guides[correct])
 
-    st.caption(
-        "※ 이 프로그램은 AI 분류를 모방한 초기 시뮬레이션이며, "
-        "실제 AI 이미지 분석 결과는 아닙니다."
-    )
+    if st.button("기본 이미지 결과 기록"):
+        st.session_state.errors.append({
+            "이미지": name,
+            "AI 예측": prediction,
+            "실제 정답": correct,
+            "오류 여부": prediction != correct
+        })
+        st.success("분류 결과를 기록했습니다.")
 
-    st.divider()
-    st.subheader("📝 AI 예측 결과 수정")
-
-    answer = st.selectbox(
-        "올바른 분리수거 종류를 선택하세요.",
-        categories,
-        key=f"answer_{key}"
-    )
-
-    if st.button("정답 수정 및 기록", use_container_width=True):
-        if answer == item["correct"]:
-            st.session_state.errors.append({
-                "물건": item["name"],
-                "AI 예측": item["prediction"],
-                "실제 정답": answer,
-                "오류 여부": item["prediction"] != answer
-            })
-            st.success("정답이 확인되고 기록되었습니다!")
-        else:
-            st.error("정답이 아닙니다. 다시 확인해 주세요.")
+st.divider()
 
 # 오류 통계
-st.divider()
-st.subheader("📊 AI 오류 분석")
+st.subheader("📊 오류 분석 통계")
 
 total = len(st.session_state.errors)
 wrong = sum(
@@ -159,21 +199,17 @@ wrong = sum(
 )
 
 col1, col2 = st.columns(2)
-
-col1.metric("수정 및 확인한 항목", f"{total}개")
-col2.metric("AI 오인식 횟수", f"{wrong}개")
+col1.metric("분석 기록", f"{total}개")
+col2.metric("오인식 횟수", f"{wrong}개")
 
 if total > 0:
-    st.write("### 오류 기록")
-
     st.dataframe(
         st.session_state.errors,
         use_container_width=True
     )
 
-    if st.button("기록 초기화"):
+    if st.button("오류 기록 초기화"):
         st.session_state.errors = []
         st.rerun()
 else:
-    st.write("아직 기록된 오류가 없습니다.")
-
+    st.write("아직 기록된 결과가 없습니다.")
