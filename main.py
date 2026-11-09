@@ -2,7 +2,6 @@
 import streamlit as st
 import os
 from PIL import Image
-from transformers import pipeline
 
 st.set_page_config(
     page_title="AI 분리수거 도우미",
@@ -213,3 +212,42 @@ if total > 0:
         st.rerun()
 else:
     st.write("아직 기록된 결과가 없습니다.")
+import streamlit as st
+from PIL import Image
+
+st.title("♻️ AI 분리수거 도우미")
+st.write("이미지를 선택하고 올바른 분리수거 방법을 확인해 보세요.")
+
+categories = ["종이", "플라스틱", "유리", "캔", "일반 쓰레기"]
+
+# 이미지 업로드
+st.subheader("📷 이미지 업로드")
+
+uploaded_file = st.file_uploader(
+    "분리수거할 이미지 파일을 선택하세요.",
+    type=["jpg", "jpeg", "png"]
+)
+
+if uploaded_file is not None:
+    image = Image.open(uploaded_file)
+    st.image(image, caption="업로드한 이미지", width=300)
+
+    st.write("이 물건은 어떤 종류인가요?")
+
+    selected_category = st.selectbox(
+        "분리수거 종류 선택",
+        categories
+    )
+
+    if st.button("분리수거 결과 확인"):
+        st.success(f"선택한 분류: {selected_category}")
+
+        disposal_info = {
+            "종이": "이물질을 제거하고 종이류로 배출하세요.",
+            "플라스틱": "내용물을 비우고 깨끗하게 헹군 뒤 배출하세요.",
+            "유리": "내용물을 비우고 유리류로 배출하세요.",
+            "캔": "내용물을 비우고 가능한 한 압착해 배출하세요.",
+            "일반 쓰레기": "재활용이 어려운 경우 종량제 봉투에 배출하세요."
+        }
+
+        st.info(disposal_info[selected_category])
